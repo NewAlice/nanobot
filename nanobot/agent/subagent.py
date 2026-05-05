@@ -114,6 +114,7 @@ class SubagentManager:
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
         session_key: str | None = None,
+        skill_names: list[str] | None = None,
     ) -> str:
         """Spawn a subagent to execute a task in the background."""
         task_id = str(uuid.uuid4())[:8]
@@ -129,7 +130,7 @@ class SubagentManager:
         self._task_statuses[task_id] = status
 
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin, status)
+            self._run_subagent(task_id, task, display_label, origin, status, skill_names)
         )
         self._running_tasks[task_id] = bg_task
         if session_key:
@@ -155,6 +156,7 @@ class SubagentManager:
         label: str,
         origin: dict[str, str],
         status: SubagentStatus,
+        skill_names: list[str] | None = None,  # 👈 新增接收
     ) -> None:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
@@ -198,7 +200,7 @@ class SubagentManager:
                         user_agent=self.web_config.user_agent,
                     )
                 )
-            system_prompt = self._build_subagent_prompt()
+            system_prompt = self._build_subagent_prompt(skill_names=skill_names)
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": task},
@@ -305,10 +307,26 @@ class SubagentManager:
             lines.append(f"- {result.error}")
         return "\n".join(lines) or (result.error or "Error: subagent execution failed.")
 
-    def _build_subagent_prompt(self) -> str:
+    def _build_subagent_prompt(self, skill_names: list[str] | None = None) -> str:
         """Build a focused system prompt for the subagent."""
         from nanobot.agent.context import ContextBuilder
         from nanobot.agent.skills import SkillsLoader
+
+        # 1. 初始化技能加载器
+        loader = SkillsLoader(
+            self.workspace,
+            disabled_skills=self.disabled_skills,
+        )
+
+        # 2. 获取并加载“激活的技能”内容（包括始终开启的和手动指定的）
+        active_skill_names = set(loader.get_always_skills())
+        if skill_names:
+            active_skill_names.update(skill_names)
+
+        active_skills_content = ""
+        if active_skill_names:
+            # 👈 这里调用 load_skills_for_context 获取 SKILL.md 的完整指令
+            active_skills_content = loader.load_skills_for_context(list(active_skill_names))
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)
         skills_summary = SkillsLoader(
@@ -319,6 +337,7 @@ class SubagentManager:
             "agent/subagent_system.md",
             time_ctx=time_ctx,
             workspace=str(self.workspace),
+            active_skills_content=active_skills_content,
             skills_summary=skills_summary or "",
         )
 

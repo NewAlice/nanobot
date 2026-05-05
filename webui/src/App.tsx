@@ -22,6 +22,8 @@ type BootState =
       client: NanobotClient;
       token: string;
       modelName: string | null;
+      skillName: string | null;
+      availableSkills: string[];
     };
 
 const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
@@ -67,6 +69,8 @@ export default function App() {
           client,
           token: boot.token,
           modelName: boot.model_name ?? null,
+          skillName: boot.skill_name ?? null, // 新增
+          availableSkills: boot.available_skills ?? [],   // 接住后端扫描到的所有技能文件夹名
         });
       } catch (e) {
         if (cancelled) return;
@@ -143,19 +147,45 @@ export default function App() {
       current.status === "ready" ? { ...current, modelName } : current,
     );
   };
+  const handleSkillNameChange = (skillName: string | null) => {
+    setState((current) =>{
+        if (current.status !== "ready") return current;
 
+        const cmd = skillName ? `/skill ${skillName}` : "/skill";
+
+        // 现在 NanobotClient 有了 connected 属性和 send 方法
+        // 使用现有的 sendMessage 方法
+        // 如果有 readyChatId 就用它，没有就用一个默认占位符，后端会根据 session 处理
+        const chatId = current.client.defaultChatId || "default";
+        current.client.sendMessage(chatId, cmd);
+
+        return { ...current, skillName };
+    });
+  };
+  console.log("App层级的技能状态:", state.availableSkills);
   return (
     <ClientProvider
       client={state.client}
       token={state.token}
       modelName={state.modelName}
+      skillName={state.skillName}
+      availableSkills={state.availableSkills}
     >
-      <Shell onModelNameChange={handleModelNameChange} />
+      <Shell
+        onModelNameChange={handleModelNameChange}
+        onSkillNameChange={handleSkillNameChange}
+        availableSkills={state.availableSkills}
+      />
     </ClientProvider>
   );
 }
 
-function Shell({ onModelNameChange }: { onModelNameChange: (modelName: string | null) => void }) {
+function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
+    {
+        onModelNameChange: (modelName: string | null) => void;
+        onSkillNameChange: (skillName: string | null) => void;
+        availableSkills: string[];
+    }) {
   const { t, i18n } = useTranslation();
   const { theme, toggle } = useTheme();
   const { sessions, loading, refresh, createChat, deleteChat } = useSessions();
@@ -334,6 +364,8 @@ function Shell({ onModelNameChange }: { onModelNameChange: (modelName: string | 
             onGoHome={() => setActiveKey(null)}
             onNewChat={onNewChat}
             hideSidebarToggleOnDesktop={desktopSidebarOpen}
+            onSkillNameChange={onSkillNameChange}
+            availableSkills={availableSkills}
           />
         )}
       </main>

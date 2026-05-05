@@ -40,6 +40,8 @@ from nanobot.utils.media_decode import (
     save_base64_data_url,
 )
 
+print("!!!!!!!! WEBSOCKET.PY LOADED !!!!!!!!")
+
 if TYPE_CHECKING:
     from nanobot.session.manager import SessionManager
 
@@ -627,12 +629,25 @@ class WebSocketChannel(BaseChannel):
         # while the REST surface keeps validating the other until TTL expiry.
         self._issued_tokens[token] = expiry
         self._api_tokens[token] = expiry
+
+        from nanobot.agent.skills import SkillsLoader
+        loader = SkillsLoader()
+        all_skills = loader.list_skills(filter_unavailable=True)
+        # 过滤：只保留来自 workspace 的，且排除 always_names
+        always_names = set(loader.get_always_skills())
+        ui_visible_skills = [
+            s for s in all_skills
+            if s["source"] == "workspace" and s["name"] not in always_names
+        ]
+
         return _http_json_response(
             {
                 "token": token,
                 "ws_path": self._expected_path(),
                 "expires_in": self.config.token_ttl_s,
                 "model_name": _read_webui_model_name(),
+                "available_skills": [s["name"] for s in ui_visible_skills] if ui_visible_skills else [],
+                "skill_name": None
             }
         )
 
@@ -1006,13 +1021,24 @@ class WebSocketChannel(BaseChannel):
         await self._server_task
 
     async def _connection_loop(self, connection: Any) -> None:
+        print(">>> 探测到新的 WS 握手请求！")
         request = connection.request
         path_part = request.path if request else "/"
         _, query = _parse_request_path(path_part)
+        # 提取正确的变量
+        current_token = _query_first(query, "token") or "no-token"
+
+        # 👈 修正变量名，防止崩溃
+        logger.debug(f"收到 WS 连接请求，路径: {path_part}, Token: {current_token}")
+
         client_id_raw = _query_first(query, "client_id")
         client_id = client_id_raw.strip() if client_id_raw else ""
         if not client_id:
-            client_id = f"anon-{uuid.uuid4().hex[:12]}"
+            if current_token != "no-token":
+                client_id = current_token[:12]  # 或者其他关联 ID
+            else:
+                client_id = f"anon-{uuid.uuid4().hex[:12]}"
+            # client_id = f"anon-{uuid.uuid4().hex[:12]}"
         elif len(client_id) > 128:
             logger.warning("websocket: client_id too long ({} chars), truncating", len(client_id))
             client_id = client_id[:128]

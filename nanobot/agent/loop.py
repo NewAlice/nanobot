@@ -911,11 +911,14 @@ class AgentLoop:
             history = session.get_history(**_hist_kwargs)
             current_role = "assistant" if is_subagent else "user"
 
+            active_skills = session.metadata.get("active_skills", [])
+
             # Subagent content is already in `history` above; passing it again
             # as current_message would double-project it into the prompt.
             messages = self.context.build_messages(
                 history=history,
                 current_message="" if is_subagent else msg.content,
+                skill_names=active_skills,
                 channel=channel,
                 chat_id=chat_id,
                 session_summary=pending,
@@ -965,7 +968,10 @@ class AgentLoop:
         logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         key = session_key or msg.session_key
+        if not key.startswith("websocket:") and msg.channel == "websocket":
+            key = f"websocket:{key}"
         session = self.sessions.get_or_create(key)
+        logger.info(f"Active Session Key: {key} | Active Skills: {session.metadata.get('active_skills')}")
         if self._restore_runtime_checkpoint(session):
             self.sessions.save(session)
         if self._restore_pending_user_turn(session):
@@ -999,10 +1005,11 @@ class AgentLoop:
         }
         history = session.get_history(**_hist_kwargs)
 
+        active_skills = session.metadata.get("active_skills", [])
         pending_ask_id = pending_ask_user_id(history)
         if pending_ask_id:
             initial_messages = ask_user_tool_result_messages(
-                self.context.build_system_prompt(channel=msg.channel),
+                self.context.build_system_prompt(skill_names=active_skills, channel=msg.channel),
                 history,
                 pending_ask_id,
                 msg.content,
@@ -1011,6 +1018,7 @@ class AgentLoop:
             initial_messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
+                skill_names=active_skills,
                 session_summary=pending,
                 media=msg.media if msg.media else None,
                 channel=msg.channel,

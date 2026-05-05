@@ -883,6 +883,7 @@ def _run_gateway(
             if len(parts) >= 2:
                 method, path = parts[0], parts[1]
 
+            print(f"DEBUG: 收到请求 Method={method}, Path={path}")
             if method == "GET" and path == "/health":
                 body = _json.dumps({"status": "ok"})
                 resp = (

@@ -380,6 +380,42 @@ async def cmd_help(ctx: CommandContext) -> OutboundMessage:
     )
 
 
+async def cmd_skill(ctx: CommandContext) -> OutboundMessage:
+    """Handle /skill <name> to switch the active skill for the session."""
+    # 1. 提取技能名 (支持 "/skill marcos" 或 "/skill" 后的内容)
+    skill_name = ctx.raw.replace("/skill", "").strip()
+    # 2. 存入 Session 的 metadata。
+    session = ctx.session or ctx.loop.sessions.get_or_create(ctx.key)
+    if not session:
+        return OutboundMessage(channel=ctx.msg.channel, chat_id=ctx.msg.chat_id, content="❌ Session error.")
+
+    if not skill_name:
+        # 如果没有参数，清空列表
+        session.metadata["active_skills"] = []
+        content = "✅ **Skills cleared.** Returned to default assistant."
+        active_val = None
+    else:
+        # 如果有参数，设置技能
+        session.metadata["active_skills"] = [skill_name]
+        content = f"✅ **Skill activated:** {skill_name}"
+        active_val = skill_name
+
+    # 4. 保存状态
+    ctx.loop.sessions.save(session)
+
+    # 4. 返回确认消息（前端可以监听 metadata 中的 active_skill 来更新 UI 状态）
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=content,
+        metadata={
+            **dict(ctx.msg.metadata or {}),
+            "active_skill": active_val,
+            "active_skills": session.metadata["active_skills"]  # 确保复数形式同步
+        }
+    )
+
+
 def build_help_text() -> str:
     """Build canonical help text shared across channels."""
     lines = [
@@ -411,4 +447,7 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.prefix("/dream-log ", cmd_dream_log)
     router.exact("/dream-restore", cmd_dream_restore)
     router.prefix("/dream-restore ", cmd_dream_restore)
+    # --- 新增以下两行 ---
+    router.exact("/skill", cmd_skill)       # 匹配不带参数的 /skill
+    router.prefix("/skill ", cmd_skill)     # 匹配带参数的 /skill marcos
     router.exact("/help", cmd_help)

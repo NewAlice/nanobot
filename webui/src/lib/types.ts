@@ -64,6 +64,9 @@ export interface BootstrapResponse {
   ws_path: string;
   expires_in: number;
   model_name?: string | null;
+  // --- 添加下面这两行 ---
+  skill_name?: string | null;
+  available_skills?: string[];
 }
 
 export interface SettingsPayload {

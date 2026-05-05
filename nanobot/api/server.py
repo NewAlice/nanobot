@@ -352,11 +352,9 @@ async def handle_health(request: web.Request) -> web.Response:
     """GET /health"""
     return web.json_response({"status": "ok"})
 
-
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
-
 
 def create_app(
     agent_loop, model_name: str = "nanobot", request_timeout: float = 120.0

@@ -1,6 +1,7 @@
 """Context builder for assembling agent prompts."""
 
 import base64
+import logging
 import mimetypes
 import platform
 from importlib.resources import files as pkg_files
@@ -12,6 +13,7 @@ from nanobot.agent.skills import SkillsLoader
 from nanobot.utils.helpers import build_assistant_message, current_time_str, detect_image_mime, truncate_text
 from nanobot.utils.prompt_templates import render_template
 
+logger = logging.getLogger(__name__)
 
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
@@ -34,9 +36,16 @@ class ContextBuilder:
         channel: str | None = None,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
-        parts = [self._get_identity(channel=channel)]
+        print(f"skill_names is xxxxxx {skill_names}")
+        if skill_names:
+            parts = []  # 清空 parts，不放 identity
+            active_content = self.skills.load_skills_for_context(skill_names)
+            parts.append(f"【CORE IDENTITY OVERRIDE】\n{active_content}")
+        else:
+            parts = [self._get_identity(channel=channel)]
+        # parts = [self._get_identity(channel=channel)]
 
-        bootstrap = self._load_bootstrap_files()
+        bootstrap = self._load_bootstrap_files(skill_names)
         if bootstrap:
             parts.append(bootstrap)
 
@@ -44,11 +53,16 @@ class ContextBuilder:
         if memory and not self._is_template_content(self.memory.read_memory(), "memory/MEMORY.md"):
             parts.append(f"# Memory\n\n{memory}")
 
-        always_skills = self.skills.get_always_skills()
+        always_skills = set(self.skills.get_always_skills())
+        # if skill_names:
+        #     # 过滤掉禁用的技能，并加入激活列表
+        #     always_skills.update(skill_names)
+
         if always_skills:
-            always_content = self.skills.load_skills_for_context(always_skills)
+            always_content = self.skills.load_skills_for_context(list(always_skills))
             if always_content:
                 parts.append(f"# Active Skills\n\n{always_content}")
+
 
         skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
         if skills_summary:
@@ -63,7 +77,9 @@ class ContextBuilder:
             history_text = truncate_text(history_text, self._MAX_HISTORY_CHARS)
             parts.append("# Recent History\n\n" + history_text)
 
-        return "\n\n---\n\n".join(parts)
+        result = "\n\n---\n\n".join(parts)
+        logger.debug(f"FULL SYSTEM PROMPT: {result[:500]}...")
+        return result
 
     def _get_identity(self, channel: str | None = None) -> str:
         """Get the core identity section."""
@@ -106,11 +122,15 @@ class ContextBuilder:
 
         return _to_blocks(left) + _to_blocks(right)
 
-    def _load_bootstrap_files(self) -> str:
+    def _load_bootstrap_files(self, skill_names: list[str] | None = None,) -> str:
         """Load all bootstrap files from workspace."""
         parts = []
 
         for filename in self.BOOTSTRAP_FILES:
+            # skip SOUL.md if skill_names not empty
+            print(f"skill_names is xxxxxx {skill_names}")
+            if skill_names and filename == "SOUL.md":
+                continue
             file_path = self.workspace / filename
             if file_path.exists():
                 content = file_path.read_text(encoding="utf-8")
@@ -141,6 +161,16 @@ class ContextBuilder:
         session_summary: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
+        # 1. 构造基础 System Prompt
+        system_prompt = self.build_system_prompt(skill_names=skill_names, channel=channel)
+        # 2. 如果有技能激活，追加“强制执行”指令，压制默认身份
+        if skill_names:
+            system_prompt = (
+                f"【SYSTEM PRIORITY: ROLE_PLAY MODE】\n"
+                f"Active Skills: {', '.join(skill_names)}\n"
+                f"You MUST ignore your default assistant persona and respond strictly according to the skills above.\n\n"
+            ) + system_prompt
+
         runtime_ctx = self._build_runtime_context(channel, chat_id, self.timezone, session_summary=session_summary)
         user_content = self._build_user_content(current_message, media)
 
@@ -148,10 +178,15 @@ class ContextBuilder:
         # to avoid consecutive same-role messages that some providers reject.
         if isinstance(user_content, str):
             merged = f"{runtime_ctx}\n\n{user_content}"
+            # 【核心修改】在 User 消息末尾再次注入“角色锚点”，防止长对话迷失
+            if skill_names:
+                merged += f"\n\n(Reminder: Speak only as defined by the active skills: {', '.join(skill_names)})"
         else:
             merged = [{"type": "text", "text": runtime_ctx}] + user_content
+            if skill_names:
+                merged.append({"type": "text", "text": f"\n\n(Role: {', '.join(skill_names)})"})
         messages = [
-            {"role": "system", "content": self.build_system_prompt(skill_names, channel=channel)},
+            {"role": "system", "content": system_prompt},
             *history,
         ]
         if messages[-1].get("role") == current_role:

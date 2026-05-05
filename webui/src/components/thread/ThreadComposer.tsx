@@ -41,6 +41,7 @@ interface ThreadComposerProps {
   disabled?: boolean;
   placeholder?: string;
   modelLabel?: string | null;
+  skillLabel?: string | null;
   variant?: "thread" | "hero";
 }
 
@@ -49,6 +50,7 @@ export function ThreadComposer({
   disabled,
   placeholder,
   modelLabel = null,
+  skillLabel,
   variant = "thread",
 }: ThreadComposerProps) {
   const { t } = useTranslation();
@@ -326,6 +328,23 @@ export function ThreadComposer({
                   className="h-1.5 w-1.5 flex-none rounded-full bg-emerald-500/80"
                 />
                 <span className="truncate">{modelLabel}</span>
+              </span>
+            ) : null}
+            {/* --- 新增：渲染 skillLabel --- */}
+            {skillLabel ? (
+              <span
+                title={`当前技能: ${skillLabel}`}
+                className={cn(
+                  "inline-flex min-w-0 items-center gap-1.5 rounded-full border px-2.5 py-1",
+                  "border-blue-500/20 bg-blue-500/5 font-medium text-blue-600 dark:text-blue-400",
+                  isHero ? "text-[11px]" : "text-[10.5px]",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 flex-none rounded-full bg-blue-500/80"
+                />
+                <span className="truncate uppercase tracking-tight">{skillLabel}</span>
               </span>
             ) : null}
             <span className="hidden select-none text-[10.5px] text-muted-foreground/60 sm:inline">

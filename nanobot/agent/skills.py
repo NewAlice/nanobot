@@ -17,6 +17,8 @@ _STRIP_SKILL_FRONTMATTER = re.compile(
     re.DOTALL,
 )
 
+# 假设这是你定义的全局变量
+WORKSPACE_LIST = set()
 
 class SkillsLoader:
     """
@@ -26,9 +28,17 @@ class SkillsLoader:
     specific tools or perform certain tasks.
     """
 
-    def __init__(self, workspace: Path, builtin_skills_dir: Path | None = None, disabled_skills: set[str] | None = None):
-        self.workspace = workspace
-        self.workspace_skills = workspace / "skills"
+    def __init__(self, workspace: Path = None, builtin_skills_dir: Path | None = None, disabled_skills: set[str] | None = None):
+        if workspace:
+            self.workspace = workspace
+            WORKSPACE_LIST.add(workspace)
+        elif WORKSPACE_LIST:
+            # 如果没传，尝试从全局集合里随便取一个（set是无序的，取pop出的元素或next）
+            self.workspace = next(iter(WORKSPACE_LIST))
+        else:
+            # 彻底没有路径可用时，抛出异常或设置默认值
+            raise ValueError("No workspace provided and WORKSPACE_LIST is empty.")
+        self.workspace_skills = self.workspace / "skills"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
         self.disabled_skills = disabled_skills or set()
 
@@ -106,7 +116,8 @@ class SkillsLoader:
             for name in skill_names
             if (markdown := self.load_skill(name))
         ]
-        return "\n\n---\n\n".join(parts)
+        result = "\n\n---\n\n".join(parts)
+        return result
 
     def build_skills_summary(self, exclude: set[str] | None = None) -> str:
         """

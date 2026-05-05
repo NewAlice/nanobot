@@ -13,6 +13,13 @@ Stay focused on the assigned task. Your final response will be reported back to 
 
 ## Skills
 
+{% if active_skills_content %}
+## Active Skills (Instructions)
+{{ active_skills_content }}
+{% endif %}
+
+{% if skills_summary %}
+## Available Skills (Reference)
 Read SKILL.md with read_file to use a skill.
 
 {{ skills_summary }}

@@ -18,6 +18,8 @@ interface ThreadShellProps {
   onGoHome: () => void;
   onNewChat: () => Promise<string | null>;
   hideSidebarToggleOnDesktop?: boolean;
+  onSkillNameChange: (skillName: string | null) => void;
+  availableSkills: string[];
 }
 
 function toModelBadgeLabel(modelName: string | null): string | null {
@@ -34,13 +36,15 @@ export function ThreadShell({
   onToggleSidebar,
   onGoHome,
   onNewChat,
+  onSkillNameChange,
+  availableSkills,
   hideSidebarToggleOnDesktop = false,
 }: ThreadShellProps) {
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
   const historyKey = session?.key ?? null;
   const { messages: historical, loading } = useSessionHistory(historyKey);
-  const { client, modelName } = useClient();
+  const { client, modelName, skillName } = useClient();
   const [booting, setBooting] = useState(false);
   const pendingFirstRef = useRef<string | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
@@ -125,6 +129,22 @@ export function ThreadShell({
     },
     [booting, onNewChat],
   );
+  const handleSkillSelect = useCallback((name: string | null) => {
+    // 1. 发送指令给后端加载 ~/.nanobot/workspace/skills/<name>.md
+    const cmd = `/skill ${name}`;
+    if (chatId) {
+       // 如果已有对话，发送一条普通消息，后端指令路由会拦截它
+       send(cmd);
+    } else {
+       // 如果没有对话，直接通过 client 的底层通道发送给后端
+       // 检查你的 NanobotClient 定义，通常是 client.publish 或 client.sendRaw
+       const targetId = client.defaultChatId || "default";
+       client.sendMessage(targetId, cmd);
+//        (client as any).publish?.({ type: "message", content: cmd });
+    }
+    // 2. 更新 UI 状态
+    onSkillNameChange(name);
+  }, [chatId, client, onSkillNameChange]);
 
   const emptyState = loading ? (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -155,6 +175,10 @@ export function ThreadShell({
         onToggleSidebar={onToggleSidebar}
         onGoHome={onGoHome}
         hideSidebarToggleOnDesktop={hideSidebarToggleOnDesktop}
+        // --- 新增以下 Props，你可能需要去修改 ThreadHeader.tsx 接收它们 ---
+        currentSkill={skillName}
+        onSkillSelect={handleSkillSelect}
+        availableSkills={availableSkills}
       />
       <ThreadViewport
         messages={messages}
@@ -185,6 +209,7 @@ export function ThreadShell({
                     : t("thread.composer.placeholderThread")
                 }
                 modelLabel={toModelBadgeLabel(modelName)}
+                skillLabel={skillName} // 传给 composer 显示当前技能标签
                 variant={showHeroComposer ? "hero" : "thread"}
               />
             ) : (
@@ -197,6 +222,7 @@ export function ThreadShell({
                     : t("thread.composer.placeholderHero")
                 }
                 modelLabel={toModelBadgeLabel(modelName)}
+                skillLabel={skillName} // 同上
                 variant="hero"
               />
             )}
