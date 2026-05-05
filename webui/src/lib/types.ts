@@ -127,6 +127,7 @@ export type InboundEvent =
       chat_id: string;
       stream_id?: string;
     }
+  | { event: "turn_end"; chat_id: string }
   | { event: "error"; chat_id?: string; detail?: string };
 
 /** Base64-encoded image attached to an outbound ``message`` envelope.

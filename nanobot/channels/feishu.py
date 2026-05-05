@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -612,12 +613,11 @@ class FeishuChannel(BaseChannel):
         """Callback: store reaction_id after background add-reaction completes."""
         if task.cancelled():
             return
-        try:
+        # Failures already logged by _on_background_task_done.
+        with suppress(Exception):
             reaction_id = task.result()
             if reaction_id:
                 self._reaction_ids[message_id] = reaction_id
-        except Exception:
-            pass  # already logged by _on_background_task_done
         # Trim cache to prevent unbounded growth
         if len(self._reaction_ids) > 500:
             self._reaction_ids.pop(next(iter(self._reaction_ids)))
@@ -1081,8 +1081,9 @@ class FeishuChannel(BaseChannel):
         if data and filename:
             file_path = media_dir / filename
             file_path.write_bytes(data)
-            logger.debug("Downloaded {} to {}", msg_type, file_path)
-            return str(file_path), f"[{msg_type}: {filename}]"
+            path_str = str(file_path)
+            logger.debug("Downloaded {} to {}", msg_type, path_str)
+            return path_str, f"[{msg_type}: {path_str}]"
 
         return None, f"[{msg_type}: download failed]"
 
