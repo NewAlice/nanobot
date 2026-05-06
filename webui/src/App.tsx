@@ -27,7 +27,7 @@ type BootState =
     };
 
 const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
-const SIDEBAR_WIDTH = 279;
+const SIDEBAR_WIDTH = 272;
 type ShellView = "chat" | "settings";
 
 function readSidebarOpen(): boolean {
@@ -103,13 +103,6 @@ export default function App() {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <div className="flex flex-col items-center gap-3 animate-in fade-in-0 duration-300">
-          <img
-            src="/brand/nanobot_icon.png"
-            alt=""
-            className="h-10 w-10 animate-pulse select-none"
-            aria-hidden
-            draggable={false}
-          />
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40" />
@@ -125,13 +118,6 @@ export default function App() {
     return (
       <div className="flex h-full w-full items-center justify-center px-4 text-center">
         <div className="flex max-w-md flex-col items-center gap-3">
-          <img
-            src="/brand/nanobot_icon.png"
-            alt=""
-            className="h-10 w-10 opacity-60 grayscale select-none"
-            aria-hidden
-            draggable={false}
-          />
           <p className="text-lg font-semibold">{t("app.error.title")}</p>
           <p className="text-sm text-muted-foreground">{state.message}</p>
           <p className="text-xs text-muted-foreground">
@@ -243,7 +229,7 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
     }
   }, []);
 
-  const onNewChat = useCallback(async () => {
+  const onCreateChat = useCallback(async () => {
     try {
       const chatId = await createChat();
       setActiveKey(`websocket:${chatId}`);
@@ -256,6 +242,12 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
     }
   }, [createChat]);
 
+  const onNewChat = useCallback(() => {
+    setActiveKey(null);
+    setView("chat");
+    setMobileSidebarOpen(false);
+  }, []);
+
   const onSelectChat = useCallback(
     (key: string) => {
       setActiveKey(key);
@@ -264,6 +256,15 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
     },
     [],
   );
+
+  const onOpenSettings = useCallback(() => {
+    setView("settings");
+    setMobileSidebarOpen(false);
+  }, []);
+
+  const onTurnEnd = useCallback(() => {
+    void refresh();
+  }, [refresh]);
 
   const onConfirmDelete = useCallback(async () => {
     if (!pendingDelete) return;
@@ -284,7 +285,8 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
   }, [pendingDelete, deleteChat, activeKey, sessions]);
 
   const headerTitle = activeSession
-    ? activeSession.preview ||
+    ? activeSession.title ||
+      activeSession.preview ||
       t("chat.fallbackTitle", { id: activeSession.chatId.slice(0, 6) })
     : t("app.brand");
 
@@ -298,20 +300,10 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
     sessions,
     activeKey,
     loading,
-    theme,
-    onToggleTheme: toggle,
-    onNewChat: () => {
-      void onNewChat();
-    },
+    onNewChat,
     onSelect: onSelectChat,
-    onRefresh: () => void refresh(),
     onRequestDelete: (key: string, label: string) =>
       setPendingDelete({ key, label }),
-    activeView: view,
-    onOpenSettings: () => {
-      setView("settings" as const);
-      setMobileSidebarOpen(false);
-    },
   };
 
   return (
@@ -326,10 +318,11 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
       >
         <div
           className={cn(
-            "absolute inset-y-0 left-0 h-full w-[279px] overflow-hidden bg-sidebar shadow-inner-right",
+            "absolute inset-y-0 left-0 h-full overflow-hidden bg-sidebar shadow-inner-right",
             "transition-transform duration-300 ease-out",
             desktopSidebarOpen ? "translate-x-0" : "-translate-x-full",
           )}
+          style={{ width: SIDEBAR_WIDTH }}
         >
           <Sidebar {...sidebarProps} onCollapse={closeDesktopSidebar} />
         </div>
@@ -342,7 +335,8 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="w-[279px] p-0 sm:max-w-[279px] lg:hidden"
+          className="p-0 lg:hidden"
+          style={{ width: SIDEBAR_WIDTH, maxWidth: SIDEBAR_WIDTH }}
         >
           <Sidebar {...sidebarProps} onCollapse={closeMobileSidebar} />
         </SheetContent>
@@ -361,8 +355,12 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
             session={activeSession}
             title={headerTitle}
             onToggleSidebar={toggleSidebar}
-            onGoHome={() => setActiveKey(null)}
             onNewChat={onNewChat}
+            onCreateChat={onCreateChat}
+            onTurnEnd={onTurnEnd}
+            theme={theme}
+            onToggleTheme={toggle}
+            onOpenSettings={onOpenSettings}
             hideSidebarToggleOnDesktop={desktopSidebarOpen}
             onSkillNameChange={onSkillNameChange}
             availableSkills={availableSkills}
