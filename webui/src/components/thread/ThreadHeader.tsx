@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import { PanelLeftOpen, Sparkles, ChevronDown } from "lucide-react";
-=======
-import { Menu, Moon, PanelLeftOpen, Settings, Sun } from "lucide-react";
->>>>>>> upstream/main
+import { Menu, Moon, PanelLeftOpen, Settings, Sun, Sparkles, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";

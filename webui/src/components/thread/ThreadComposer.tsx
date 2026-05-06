@@ -337,7 +337,6 @@ export function ThreadComposer({
                 <span className="truncate">{modelLabel}</span>
               </span>
             ) : null}
-<<<<<<< HEAD
             {/* --- 新增：渲染 skillLabel --- */}
             {skillLabel ? (
               <span

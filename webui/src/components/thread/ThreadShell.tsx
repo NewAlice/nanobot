@@ -57,18 +57,13 @@ export function ThreadShell({
   session,
   title,
   onToggleSidebar,
-<<<<<<< HEAD
-  onGoHome,
-  onNewChat,
-  onSkillNameChange,
-  availableSkills,
-=======
   onCreateChat,
   onTurnEnd,
   theme = "light",
   onToggleTheme = () => {},
   onOpenSettings = () => {},
->>>>>>> upstream/main
+  onSkillNameChange,
+  availableSkills,
   hideSidebarToggleOnDesktop = false,
 }: ThreadShellProps) {
   const { t } = useTranslation();
