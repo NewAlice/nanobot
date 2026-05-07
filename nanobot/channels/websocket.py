@@ -627,6 +627,10 @@ class WebSocketChannel(BaseChannel):
         # When a secret is configured (token_issue_secret or static token),
         # validate it regardless of source IP.  This secures deployments
         # behind a reverse proxy where all connections appear as localhost.
+        # 1. 解析请求中的 chat_id (用于恢复技能状态)
+        _, query = _parse_request_path(request.path)
+        chat_id = _query_first(query, "chat_id")
+
         secret = self.config.token_issue_secret.strip() or self.config.token.strip()
         if secret:
             if not _issue_route_secret_matches(request.headers, secret):
@@ -653,6 +657,17 @@ class WebSocketChannel(BaseChannel):
         self._issued_tokens[token] = expiry
         self._api_tokens[token] = expiry
 
+
+        # 2. 读取该会话真实的技能状态
+        active_skill = None
+        if chat_id and self._session_manager:
+            session_data = self._session_manager.read_session_file(chat_id)
+            if session_data:
+                metadata = session_data.get("metadata", {})
+                skills = metadata.get("active_skills", [])
+                # 取第一个激活的技能作为 UI 显示
+                active_skill = skills[0] if (isinstance(skills, list) and skills) else None
+
         from nanobot.agent.skills import SkillsLoader
         loader = SkillsLoader()
         all_skills = loader.list_skills(filter_unavailable=True)
@@ -670,7 +685,7 @@ class WebSocketChannel(BaseChannel):
                 "expires_in": self.config.token_ttl_s,
                 "model_name": _read_webui_model_name(),
                 "available_skills": [s["name"] for s in ui_visible_skills] if ui_visible_skills else [],
-                "skill_name": None
+                "skill_name": active_skill
             }
         )
 
