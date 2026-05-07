@@ -251,7 +251,7 @@ export default function App() {
     clearSavedSecret();
     // 清理本地技能缓存
     window.localStorage.removeItem("nanobot_last_skill");
-    setState({ status: "auth", availableSkills: [],  skillName: null， token: ""});
+    setState({ status: "auth", availableSkills: [],  skillName: null, token: ""});
   };
 
   return (
