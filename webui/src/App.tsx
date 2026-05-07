@@ -25,7 +25,14 @@ import { Input } from "@/components/ui/input";
 type BootState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "auth"; failed?: boolean }
+  | {
+      status: "auth";
+      failed?: boolean;
+      // 新增以下可选属性，允许在登出清理状态时设置它们
+      availableSkills?: string[];
+      skillName?: string | null;
+      token?: string;
+    }
   | {
       status: "ready";
       client: NanobotClient;

@@ -20,7 +20,6 @@ import { useSessionHistory } from "@/hooks/useSessions";
 import { listSlashCommands } from "@/lib/api";
 import type { ChatSummary, SlashCommand, UIMessage } from "@/lib/types";
 import { useClient } from "@/providers/ClientProvider";
-import { newId } from "@/lib/imageEncode"; // 假设路径正确
 
 interface ThreadShellProps {
   session: ChatSummary | null;
