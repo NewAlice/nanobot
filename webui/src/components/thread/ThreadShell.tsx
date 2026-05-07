@@ -153,9 +153,8 @@ export function ThreadShell({
     setMessages((prev) => [
       ...prev,
       {
-        // id: crypto.randomUUID(),
-        // 增加兜底，防止 crypto.randomUUID 报错
-        id: newId(),
+        // 增加兜底在main.tsx，防止 crypto.randomUUID 报错
+        id: crypto.randomUUID(),
         role: "user",
         content: pending,
         createdAt: Date.now(),
