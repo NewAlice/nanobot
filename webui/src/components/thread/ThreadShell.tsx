@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -17,8 +17,10 @@ import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { ThreadViewport } from "@/components/thread/ThreadViewport";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
-import type { ChatSummary, UIMessage } from "@/lib/types";
+import { listSlashCommands } from "@/lib/api";
+import type { ChatSummary, SlashCommand, UIMessage } from "@/lib/types";
 import { useClient } from "@/providers/ClientProvider";
+import { newId } from "@/lib/imageEncode"; // 假设路径正确
 
 interface ThreadShellProps {
   session: ChatSummary | null;
@@ -70,8 +72,9 @@ export function ThreadShell({
   const chatId = session?.chatId ?? null;
   const historyKey = session?.key ?? null;
   const { messages: historical, loading, hasPendingToolCalls } = useSessionHistory(historyKey);
-  const { client, modelName, skillName } = useClient();
+  const { client, modelName, token, skillName } = useClient();
   const [booting, setBooting] = useState(false);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const pendingFirstRef = useRef<string | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
   const lastCachedChatIdRef = useRef<string | null>(null);
@@ -120,20 +123,29 @@ export function ThreadShell({
     setMessages(historical);
   }, [chatId, historical, setMessages]);
 
-  useEffect(() => {
-    if (!chatId) return;
+  useLayoutEffect(() => {
+    if (!chatId) {
+      lastCachedChatIdRef.current = null;
+      return;
+    }
+    if (loading) return;
     // Skip the first cache write after a chat switch. During that render,
     // `messages` can still belong to the previous chat until the stream hook
     // resets its local state for the new session.
     if (lastCachedChatIdRef.current !== chatId) {
       lastCachedChatIdRef.current = chatId;
+      if (messages.length > 0) {
+        messageCacheRef.current.set(chatId, messages);
+      }
       return;
     }
     messageCacheRef.current.set(chatId, messages);
-  }, [chatId, messages]);
+  }, [chatId, loading, messages]);
 
   useEffect(() => {
-    if (!chatId) return;
+    // 核心修复：增加 client 的存在性检查
+    if (!chatId || !client || typeof client.sendMessage !== 'function') return;
+    //     if (!chatId) return;
     const pending = pendingFirstRef.current;
     if (!pending) return;
     pendingFirstRef.current = null;
@@ -141,7 +153,9 @@ export function ThreadShell({
     setMessages((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        // id: crypto.randomUUID(),
+        // 增加兜底，防止 crypto.randomUUID 报错
+        id: newId(),
         role: "user",
         content: pending,
         createdAt: Date.now(),
@@ -149,6 +163,21 @@ export function ThreadShell({
     ]);
     setBooting(false);
   }, [chatId, client, setMessages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const commands = await listSlashCommands(token);
+        if (!cancelled) setSlashCommands(commands);
+      } catch {
+        if (!cancelled) setSlashCommands([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const handleWelcomeSend = useCallback(
     async (content: string) => {
@@ -227,6 +256,7 @@ export function ThreadShell({
           modelLabel={toModelBadgeLabel(modelName)}
           skillLabel={skillName} // 传给 composer 显示当前技能标签
           variant={showHeroComposer ? "hero" : "thread"}
+          slashCommands={slashCommands}
         />
       ) : (
         <ThreadComposer
@@ -255,6 +285,7 @@ export function ThreadShell({
     } else {
        // 如果没有对话，直接通过 client 的底层通道发送给后端
        // 检查你的 NanobotClient 定义，通常是 client.publish 或 client.sendRaw
+       if (!client) return; // 防护：如果 client 还没初始化好，不执行发送
        const targetId = client.defaultChatId || "default";
        client.sendMessage(targetId, cmd);
 //        (client as any).publish?.({ type: "message", content: cmd });

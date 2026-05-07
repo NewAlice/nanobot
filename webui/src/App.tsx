@@ -9,14 +9,23 @@ import { preloadMarkdownText } from "@/components/MarkdownText";
 import { useSessions } from "@/hooks/useSessions";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
-import { deriveWsUrl, fetchBootstrap } from "@/lib/bootstrap";
+import {
+  clearSavedSecret,
+  deriveWsUrl,
+  fetchBootstrap,
+  loadSavedSecret,
+  saveSecret,
+} from "@/lib/bootstrap";
 import { NanobotClient } from "@/lib/nanobot-client";
 import { ClientProvider } from "@/providers/ClientProvider";
 import type { ChatSummary } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type BootState =
   | { status: "loading" }
   | { status: "error"; message: string }
+  | { status: "auth"; failed?: boolean }
   | {
       status: "ready";
       client: NanobotClient;
@@ -29,6 +38,60 @@ type BootState =
 const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
 const SIDEBAR_WIDTH = 272;
 type ShellView = "chat" | "settings";
+
+function AuthForm({
+  failed,
+  onSecret,
+}: {
+  failed: boolean;
+  onSecret: (secret: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const secret = value.trim();
+    if (!secret) return;
+    setSubmitting(true);
+    onSecret(secret);
+  };
+
+  return (
+    <div className="flex h-full w-full items-center justify-center px-6">
+      <form
+        onSubmit={handleSubmit}
+        className="flex w-full max-w-sm flex-col gap-4"
+      >
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-lg font-semibold">{t("app.auth.title")}</p>
+          <p className="text-sm text-muted-foreground">{t("app.auth.hint")}</p>
+        </div>
+        {failed && (
+          <p className="text-center text-sm text-destructive">
+            {t("app.auth.invalid")}
+          </p>
+        )}
+        <Input
+          type="password"
+          placeholder={t("app.auth.placeholder")}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={submitting}
+          autoFocus
+        />
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={!value.trim() || submitting}
+        >
+          {t("app.auth.submit")}
+        </Button>
+      </form>
+    </div>
+  );
+}
 
 function readSidebarOpen(): boolean {
   if (typeof window === "undefined") return true;
@@ -45,42 +108,60 @@ export default function App() {
   const { t } = useTranslation();
   const [state, setState] = useState<BootState>({ status: "loading" });
 
+  const bootstrapWithSecret = useCallback(
+    (secret: string) => {
+      let cancelled = false;
+      (async () => {
+        setState({ status: "loading" });
+        try {
+          const boot = await fetchBootstrap("", secret);
+          console.log("后端返回的完整原始数据:", boot);
+          console.log("准备设置的技能名:", boot.skill_name);
+
+          if (cancelled) return;
+          if (secret) saveSecret(secret);
+          const url = deriveWsUrl(boot.ws_path, boot.token);
+          const client = new NanobotClient({
+            url,
+            onReauth: async () => {
+              try {
+                const refreshed = await fetchBootstrap("", secret);
+                return deriveWsUrl(refreshed.ws_path, refreshed.token);
+              } catch {
+                return null;
+              }
+            },
+          });
+          client.connect();
+          setState({
+            status: "ready",
+            client,
+            token: boot.token,
+            modelName: boot.model_name ?? null,
+            skillName: boot.skill_name ?? window.localStorage.getItem("nanobot_last_skill") ?? null, // 新增
+            availableSkills: boot.available_skills ?? [],   // 接住后端扫描到的所有技能文件夹名
+          });
+        } catch (e) {
+          if (cancelled) return;
+          const msg = (e as Error).message;
+          if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) {
+            setState({ status: "auth", failed: true });
+          } else {
+            setState({ status: "error", message: msg });
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    },
+    [],
+  );
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const boot = await fetchBootstrap();
-        if (cancelled) return;
-        const url = deriveWsUrl(boot.ws_path, boot.token);
-        const client = new NanobotClient({
-          url,
-          onReauth: async () => {
-            try {
-              const refreshed = await fetchBootstrap();
-              return deriveWsUrl(refreshed.ws_path, refreshed.token);
-            } catch {
-              return null;
-            }
-          },
-        });
-        client.connect();
-        setState({
-          status: "ready",
-          client,
-          token: boot.token,
-          modelName: boot.model_name ?? null,
-          skillName: boot.skill_name ?? null, // 新增
-          availableSkills: boot.available_skills ?? [],   // 接住后端扫描到的所有技能文件夹名
-        });
-      } catch (e) {
-        if (cancelled) return;
-        setState({ status: "error", message: (e as Error).message });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const saved = loadSavedSecret();
+    return bootstrapWithSecret(saved);
+  }, [bootstrapWithSecret]);
 
   useEffect(() => {
     const warm = () => preloadMarkdownText();
@@ -114,6 +195,14 @@ export default function App() {
       </div>
     );
   }
+  if (state.status === "auth") {
+    return (
+      <AuthForm
+        failed={!!state.failed}
+        onSecret={(s) => bootstrapWithSecret(s)}
+      />
+    );
+  }
   if (state.status === "error") {
     return (
       <div className="flex h-full w-full items-center justify-center px-4 text-center">
@@ -137,6 +226,12 @@ export default function App() {
     setState((current) =>{
         if (current.status !== "ready") return current;
 
+        // 1. 存入本地缓存，这样新开页面能感知到
+        if (skillName) {
+          window.localStorage.setItem("nanobot_last_skill", skillName);
+        } else {
+          window.localStorage.removeItem("nanobot_last_skill");
+        }
         const cmd = skillName ? `/skill ${skillName}` : "/skill";
 
         // 现在 NanobotClient 有了 connected 属性和 send 方法
@@ -149,6 +244,16 @@ export default function App() {
     });
   };
   console.log("App层级的技能状态:", state.availableSkills);
+  const handleLogout = () => {
+    if (state.status === "ready") {
+      state.client.close();
+    }
+    clearSavedSecret();
+    // 清理本地技能缓存
+    window.localStorage.removeItem("nanobot_last_skill");
+    setState({ status: "auth", availableSkills: [],  skillName: null， token: ""});
+  };
+
   return (
     <ClientProvider
       client={state.client}
@@ -159,18 +264,18 @@ export default function App() {
     >
       <Shell
         onModelNameChange={handleModelNameChange}
+        onLogout={handleLogout}
         onSkillNameChange={handleSkillNameChange}
         availableSkills={state.availableSkills}
-      />
+       />
     </ClientProvider>
   );
 }
 
-function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
-    {
-        onModelNameChange: (modelName: string | null) => void;
-        onSkillNameChange: (skillName: string | null) => void;
-        availableSkills: string[];
+function Shell({ onModelNameChange, onLogout, onSkillNameChange, availableSkills }: {
+    onModelNameChange: (modelName: string | null) => void; onLogout: () => void
+    onSkillNameChange: (skillName: string | null) => void;
+    availableSkills: string[];
     }) {
   const { t, i18n } = useTranslation();
   const { theme, toggle } = useTheme();
@@ -349,6 +454,7 @@ function Shell({ onModelNameChange, onSkillNameChange, availableSkills }:
             onToggleTheme={toggle}
             onBackToChat={() => setView("chat")}
             onModelNameChange={onModelNameChange}
+            onLogout={onLogout}
           />
         ) : (
           <ThreadShell
