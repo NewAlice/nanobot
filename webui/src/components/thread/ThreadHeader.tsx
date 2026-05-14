@@ -1,4 +1,4 @@
-import { Menu, Moon, PanelLeftOpen, Settings, Sun, Sparkles, ChevronDown } from "lucide-react";
+import { Menu, Moon, PanelLeftOpen, Settings, Sun, Sparkles, ChevronDown, Search} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -9,23 +9,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useState } from "react";
 
-// 1. 抽离技能下拉菜单组件（由你新增，抽离后对原文件结构破坏最小）
+
 function SkillDropdown({
   currentSkill,
   availableSkills,
-  onSkillSelect
+  onSkillSelect,
 }: {
   currentSkill: string | null;
   availableSkills: string[];
   onSkillSelect: (s: string | null) => void;
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredSkills = availableSkills.filter((skill) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return skill.toLowerCase().includes(q);
+  });
+
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}> {/* 关键：modal=false 防止滚动被锁 */}
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent/35 hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent/35 hover:text-foreground"
         >
           <Sparkles className="h-3 w-3 text-blue-500/80" />
           <span className="truncate uppercase tracking-wider text-[11px]">
@@ -34,24 +43,57 @@ function SkillDropdown({
           <ChevronDown className="h-3 w-3 opacity-50" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-40 shadow-xl border-accent/50">
+
+      {/* 🔥 核心修复：max-height + overflow-y-auto + 去掉overflow-hidden */}
+      <DropdownMenuContent
+        align="start"
+        className="w-48 max-h-[60vh] overflow-y-auto overflow-x-hidden p-2 shadow-lg border"
+      >
+        {/* 搜索框 */}
+        <div className="flex items-center gap-2 border-b pb-2 mb-2">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索技能..."
+            className="flex-1 bg-transparent outline-none text-[12px] placeholder:text-muted-foreground/70"
+          />
+        </div>
+
+        {/* 默认 */}
         <DropdownMenuItem
-          onClick={() => onSkillSelect(null)}
-          className="flex items-center justify-between text-[12px] cursor-pointer border-b border-accent/30 pb-2 mb-1"
+          onClick={() => {
+            onSkillSelect(null);
+            setSearchQuery("");
+          }}
+          className="text-[12px] py-1.5 border-b mb-1"
         >
-          <span className={cn(!currentSkill && "font-bold text-blue-500")}>默认助手 (无技能)</span>
-          {!currentSkill && <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
+          <span className={cn(!currentSkill && "font-bold text-blue-500")}>
+            默认助手 (无技能)
+          </span>
         </DropdownMenuItem>
-        {availableSkills?.map((skill) => (
-          <DropdownMenuItem
-            key={skill}
-            onClick={() => onSkillSelect(skill)}
-            className="flex items-center justify-between text-[12px] cursor-pointer"
-          >
-            <span className={cn(currentSkill === skill && "font-bold text-foreground")}>{skill}</span>
-            {currentSkill === skill && <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
-          </DropdownMenuItem>
-        ))}
+
+        {/* 技能列表（可滚动）*/}
+        {filteredSkills.length > 0 ? (
+          filteredSkills.map((skill) => (
+            <DropdownMenuItem
+              key={skill}
+              onClick={() => {
+                onSkillSelect(skill);
+                setSearchQuery("");
+              }}
+              className="text-[12px] py-1.5"
+            >
+              <span className={cn(currentSkill === skill && "font-bold")}>
+                {skill}
+              </span>
+            </DropdownMenuItem>
+          ))
+        ) : (
+          <div className="text-[12px] text-muted-foreground py-2 text-center">
+            未找到技能
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
