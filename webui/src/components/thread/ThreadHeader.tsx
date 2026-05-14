@@ -12,10 +12,11 @@ import {
 import { useState } from "react";
 
 
+// 可搜索 + 可滚动 + 自动按字母排序 技能下拉
 function SkillDropdown({
   currentSkill,
   availableSkills,
-  onSkillSelect,
+  onSkillSelect
 }: {
   currentSkill: string | null;
   availableSkills: string[];
@@ -23,14 +24,30 @@ function SkillDropdown({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredSkills = availableSkills.filter((skill) => {
+  // 固定要放在前面的技能
+  const pinnedSkills = [
+    "ferdinand-marcos-skills",
+    "spokesperson-agent-skill",
+  ];
+
+  // 1. 搜索过滤
+  let filtered = availableSkills.filter((skill) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return skill.toLowerCase().includes(q);
   });
 
+  // 2. 拆分：固定项 + 其他项
+  const pinnedInFiltered = pinnedSkills.filter(s => filtered.includes(s));
+  const otherSkills = filtered
+    .filter(s => !pinnedSkills.includes(s))
+    .sort((a, b) => a.localeCompare(b, "zh-CN"));
+
+  // 3. 最终顺序：固定在前 → 其他排序在后
+  const finalSkills = [...pinnedInFiltered, ...otherSkills];
+
   return (
-    <DropdownMenu modal={false}> {/* 关键：modal=false 防止滚动被锁 */}
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -44,13 +61,12 @@ function SkillDropdown({
         </button>
       </DropdownMenuTrigger>
 
-      {/* 🔥 核心修复：max-height + overflow-y-auto + 去掉overflow-hidden */}
       <DropdownMenuContent
         align="start"
-        className="w-48 max-h-[60vh] overflow-y-auto overflow-x-hidden p-2 shadow-lg border"
+        className="w-40 max-h-[60vh] overflow-y-auto overflow-x-hidden p-2 shadow-xl border-accent/50"
       >
         {/* 搜索框 */}
-        <div className="flex items-center gap-2 border-b pb-2 mb-2">
+        <div className="flex items-center gap-2 border-b border-accent/30 pb-2 mb-2">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
             value={searchQuery}
@@ -60,39 +76,29 @@ function SkillDropdown({
           />
         </div>
 
-        {/* 默认 */}
+        {/* 固定第 1 项：默认助手 */}
         <DropdownMenuItem
-          onClick={() => {
-            onSkillSelect(null);
-            setSearchQuery("");
-          }}
-          className="text-[12px] py-1.5 border-b mb-1"
+          onClick={() => onSkillSelect(null)}
+          className="flex items-center justify-between text-[12px] cursor-pointer border-b border-accent/30 pb-2 mb-1"
         >
-          <span className={cn(!currentSkill && "font-bold text-blue-500")}>
-            默认助手 (无技能)
-          </span>
+          <span className={cn(!currentSkill && "font-bold text-blue-500")}>默认助手 (无技能)</span>
+          {!currentSkill && <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
         </DropdownMenuItem>
 
-        {/* 技能列表（可滚动）*/}
-        {filteredSkills.length > 0 ? (
-          filteredSkills.map((skill) => (
+        {/* 排序后的技能列表 */}
+        {finalSkills.length > 0 ? (
+          finalSkills.map((skill) => (
             <DropdownMenuItem
               key={skill}
-              onClick={() => {
-                onSkillSelect(skill);
-                setSearchQuery("");
-              }}
-              className="text-[12px] py-1.5"
+              onClick={() => onSkillSelect(skill)}
+              className="flex items-center justify-between text-[12px] cursor-pointer py-1.5"
             >
-              <span className={cn(currentSkill === skill && "font-bold")}>
-                {skill}
-              </span>
+              <span className={cn(currentSkill === skill && "font-bold text-foreground")}>{skill}</span>
+              {currentSkill === skill && <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
             </DropdownMenuItem>
           ))
         ) : (
-          <div className="text-[12px] text-muted-foreground py-2 text-center">
-            未找到技能
-          </div>
+          <div className="text-[12px] text-muted-foreground py-2 text-center">未找到技能</div>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
