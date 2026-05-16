@@ -28,6 +28,12 @@ function SkillDropdown({
   const pinnedSkills = [
     "ferdinand-marcos-skills",
     "spokesperson-agent-skill",
+    "sara-duterte-skill",
+    "enrique-manalo-skill",
+    "gilberto-teodoro-skill",
+    "cristina-aldeguer-roque-skill",
+    "martin-romualdez-skill",
+    "leni-robredo-skill",
   ];
 
   // 1. 搜索过滤
