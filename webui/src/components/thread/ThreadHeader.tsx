@@ -26,7 +26,7 @@ function SkillDropdown({
 
   // 固定要放在前面的技能
   const pinnedSkills = [
-    "ferdinand-marcos-skills",
+    "bondbong-marcos-skill",
     "spokesperson-agent-skill",
     "sara-duterte-skill",
     "enrique-manalo-skill",
